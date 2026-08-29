@@ -1,8 +1,5 @@
 name: Build AAB
-on:
-  push:
-    branches: [ main ]
-  workflow_dispatch:
+on: [push, workflow_dispatch]
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -14,16 +11,16 @@ jobs:
           distribution: 'temurin'
       - uses: android-actions/setup-android@v3
 
-      - name: Create Hisab App with AdMob
+      - name: Make App
         run: |
-          cat > settings.gradle << 'EOF'
-          include ':app'
-          EOF
-          
+          echo "include ':app'" > settings.gradle
           mkdir -p app/src/main/java/com/hisab/khata
           
+          # 1. BUILD.GRADLE
           cat > app/build.gradle << 'EOF'
-          plugins { id 'com.android.application' }
+          plugins {
+              id 'com.android.application' version '8.2.0' apply true
+          }
           android {
               compileSdk 34
               namespace 'com.hisab.khata'
@@ -31,19 +28,21 @@ jobs:
                   applicationId "com.hisab.khata"
                   minSdk 21
                   targetSdk 34
-                  versionCode 3
-                  versionName "3.0"
+                  versionCode 6
+                  versionName "6.0"
               }
               signingConfigs {
                   release {
-                      storeFile file('../hisab-release.keystore')
+                      storeFile file('../hisab.jks')
                       storePassword 'hisab123'
                       keyAlias 'hisab'
                       keyPassword 'hisab123'
                   }
               }
               buildTypes {
-                  release { signingConfig signingConfigs.release }
+                  release {
+                      signingConfig signingConfigs.release
+                  }
               }
           }
           dependencies {
@@ -51,21 +50,23 @@ jobs:
           }
           EOF
           
+          # 2. MANIFEST - Yaha APP ID hai
           cat > app/src/main/AndroidManifest.xml << 'EOF'
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-              <uses-permission android:name="android.permission.INTERNET" />
-              <application android:label="Hisab Khata" android:theme="@android:style/Theme.NoTitleBar">
+              <uses-permission android:name="android.permission.INTERNET"/>
+              <application android:label="Hisab Khata">
                   <meta-data android:name="com.google.android.gms.ads.APPLICATION_ID" android:value="ca-app-pub-5685258517627203~5338147612"/>
-                  <activity android:name=".MainActivity" android:exported="true">
+                  <activity android:name=".MainActivity" android:exported="true" android:theme="@android:style/Theme.NoTitleBar">
                       <intent-filter>
-                          <action android:name="android.intent.action.MAIN" />
-                          <category android:name="android.intent.category.LAUNCHER" />
+                          <action android:name="android.intent.action.MAIN"/>
+                          <category android:name="android.intent.category.LAUNCHER"/>
                       </intent-filter>
                   </activity>
               </application>
           </manifest>
           EOF
           
+          # 3. MAIN ACTIVITY - Yaha BANNER ID hai
           cat > app/src/main/java/com/hisab/khata/MainActivity.java << 'EOF'
           package com.hisab.khata;
           import android.app.Activity;
@@ -75,52 +76,43 @@ jobs:
           import android.widget.LinearLayout;
           import com.google.android.gms.ads.*;
           public class MainActivity extends Activity {
-              private WebView webView;
-              private InterstitialAd mInterstitialAd;
-              @Override protected void onCreate(Bundle savedInstanceState) {
+              WebView webView;
+              @Override
+              protected void onCreate(Bundle savedInstanceState) {
                   super.onCreate(savedInstanceState);
-                  MobileAds.initialize(this, new OnInitializationCompleteListener() {
-                      @Override public void onInitializationComplete(InitializationStatus status) {}
-                  });
+                  MobileAds.initialize(this, status -> {});
                   LinearLayout layout = new LinearLayout(this);
                   layout.setOrientation(LinearLayout.VERTICAL);
                   AdView adView = new AdView(this);
                   adView.setAdSize(AdSize.BANNER);
                   adView.setAdUnitId("ca-app-pub-5685258517627203/3563242960");
-                  AdRequest adRequest = new AdRequest.Builder().build();
-                  adView.loadAd(adRequest);
+                  adView.loadAd(new AdRequest.Builder().build());
                   webView = new WebView(this);
                   webView.getSettings().setJavaScriptEnabled(true);
                   webView.setWebViewClient(new WebViewClient());
                   webView.loadUrl("https://rahilreza18.github.io/hisab-com/");
                   layout.addView(adView);
-                  layout.addView(webView, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.MATCH_PARENT, 1f));
+                  layout.addView(webView, new LinearLayout.LayoutParams(-1, -1, 1f));
                   setContentView(layout);
-                  InterstitialAd.load(this, "ca-app-pub-5685258517627203/5332559559", adRequest, new InterstitialAdLoadCallback() {
-                      @Override public void onAdLoaded(InterstitialAd ad) { mInterstitialAd = ad; }
-                  });
               }
-              @Override public void onBackPressed() {
+              @Override
+              public void onBackPressed() {
                   if(webView.canGoBack()) webView.goBack();
-                  else {
-                      if(mInterstitialAd != null) mInterstitialAd.show(this);
-                      super.onBackPressed();
-                  }
+                  else super.onBackPressed();
               }
           }
           EOF
+          
+          # KEYSTORE BANAO
+          keytool -genkey -v -keystore hisab.jks -alias hisab -keyalg RSA -keysize 2048 -validity 10000 -storepass hisab123 -keypass hisab123 -dname "CN=Hisab, O=Hisab, C=IN"
 
-      - name: Generate Keystore
-        run: keytool -genkey -v -keystore hisab-release.keystore -alias hisab -keyalg RSA -keysize 2048 -validity 10000 -storepass hisab123 -keypass hisab123 -dname "CN=Hisab, OU=Hisab, O=Hisab, L=Delhi, S=Delhi, C=IN"
-
-      - name: Build Signed AAB with AdMob
+      - name: Build AAB
         run: |
-          cd app
-          chmod +x ../gradlew || gradle wrapper
-          ./gradlew bundleRelease || gradle bundleRelease
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
+          gradle :app:bundleRelease
 
-      - name: Upload Signed AAB
+      - name: Upload AAB
         uses: actions/upload-artifact@v4
         with:
-          name: hisab-signed-admob-aab
+          name: Hisab-Signed-AdMob-AAB
           path: app/build/outputs/bundle/release/*.aab
