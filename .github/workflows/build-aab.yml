@@ -11,23 +11,65 @@ jobs:
         with:
           java-version: '17'
           distribution: 'temurin'
+      - uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: 8.5
       - uses: android-actions/setup-android@v3
+      - name: Create Project
+        run: |
+          cat > settings.gradle << 'EOF'
+          pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }
+          dependencyResolutionManagement { repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS); repositories { google(); mavenCentral() } }
+          include ":app"
+          EOF
+          cat > build.gradle << 'EOF'
+          plugins { id "com.android.application" version "8.2.0" apply false; id "org.jetbrains.kotlin.android" version "1.9.10" apply false }
+          EOF
+          mkdir -p app/src/main/java/com/hisabcom/app app/src/main/assets
+          cp index.html app/src/main/assets/ 2>/dev/null || echo "<h1>hisab.com</h1>" > app/src/main/assets/index.html
+          cat > app/build.gradle << 'EOF'
+          plugins { id 'com.android.application'; id 'org.jetbrains.kotlin.android' }
+          android { namespace 'com.hisabcom.app'; compileSdk 34; defaultConfig { applicationId "com.hisabcom.app"; minSdk 21; targetSdk 34; versionCode 6; versionName "1.6" }; buildTypes { release { minifyEnabled false } } }
+          dependencies { implementation 'androidx.appcompat:appcompat:1.6.1'; implementation 'com.google.android.gms:play-services-ads:22.5.0' }
+          EOF
+          cat > app/src/main/AndroidManifest.xml << 'EOF'
+          <?xml version="1.0" encoding="utf-8"?><manifest xmlns:android="http://schemas.android.com/apk/res/android"><application android:allowBackup="true" android:label="hisab.com" android:theme="@android:style/Theme.NoTitleBar"><activity android:name=".MainActivity" android:exported="true"><intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter></activity><meta-data android:name="com.google.android.gms.ads.APPLICATION_ID" android:value="ca-app-pub-5685258517627203~5338147612"/></application><uses-permission android:name="android.permission.INTERNET"/><uses-permission android:name="com.google.android.gms.permission.AD_ID"/></manifest>
+          EOF
+          cat > app/src/main/java/com/hisabcom/app/MainActivity.kt << 'EOF'
+          package com.hisabcom.app
+          import android.os.Bundle
+          import android.webkit.*
+          import android.widget.LinearLayout
+          import androidx.appcompat.app.AppCompatActivity
+          import com.google.android.gms.ads.*
+          import com.google.android.gms.ads.interstitial.*
+          class MainActivity : AppCompatActivity() {
+            private var mAd: InterstitialAd? = null
+            override fun onCreate(s: Bundle?) {
+              super.onCreate(s)
+              MobileAds.initialize(this)
+              val lay = LinearLayout(this); lay.orientation = LinearLayout.VERTICAL
+              val wv = WebView(this); wv.settings.javaScriptEnabled = true; wv.settings.domStorageEnabled = true
+              wv.webViewClient = WebViewClient(); wv.addJavascriptInterface(JS(), "Android")
+              wv.loadUrl("file:///android_asset/index.html")
+              wv.layoutParams = LinearLayout.LayoutParams(-1,0,1f)
+              val adV = AdView(this); adV.setAdSize(AdSize.BANNER); adV.adUnitId = "ca-app-pub-5685258517627203/3563242960"
+              adV.layoutParams = LinearLayout.LayoutParams(-1,-2)
+              lay.addView(wv); lay.addView(adV); setContentView(lay)
+              adV.loadAd(AdRequest.Builder().build()); loadInt()
+            }
+            inner class JS {
+              @JavascriptInterface fun showAd() { runOnUiThread { mAd?.show(this@MainActivity); loadInt() } }
+              @JavascriptInterface fun finishApp() { finish() }
+            }
+            fun loadInt() { InterstitialAd.load(this,"ca-app-pub-5685258517627203/5332559559",AdRequest.Builder().build(),object:InterstitialAdLoadCallback(){override fun onAdLoaded(a:InterstitialAd){mAd=a}override fun onAdFailedToLoad(e:LoadAdError){mAd=null}})}
+          }
+          EOF
       - name: Build AAB
         run: |
-          mkdir -p app/src/main/assets
-          cp index.html app/src/main/assets/index.html || echo "no index"
-          mkdir -p app/src/main/java/com/hisabcom/app
-          printf '%s\n' "package com.hisabcom.app" "import android.os.Bundle" "import android.webkit.*" "import android.widget.LinearLayout" "import android.view.ViewGroup" "import androidx.appcompat.app.AppCompatActivity" "import com.google.android.gms.ads.*" "import com.google.android.gms.ads.interstitial.*" "class MainActivity : AppCompatActivity() {" "private var mInterstitialAd: InterstitialAd? = null" "lateinit var webView: WebView" "lateinit var adView: AdView" "override fun onCreate(savedInstanceState: Bundle?) {" "super.onCreate(savedInstanceState)" "MobileAds.initialize(this)" "val layout = LinearLayout(this)" "layout.orientation = LinearLayout.VERTICAL" "webView = WebView(this)" "webView.settings.javaScriptEnabled = true" "webView.settings.domStorageEnabled = true" "webView.webViewClient = WebViewClient()" "webView.addJavascriptInterface(WebAppInterface(), \"Android\")" "webView.loadUrl(\"file:///android_asset/index.html\")" "webView.layoutParams = LinearLayout.LayoutParams(-1,0,1f)" "adView = AdView(this)" "adView.setAdSize(AdSize.BANNER)" "adView.adUnitId = \"ca-app-pub-5685258517627203/3563242960\"" "layout.addView(webView)" "layout.addView(adView)" "setContentView(layout)" "adView.loadAd(AdRequest.Builder().build())" "loadAd()" "}" "inner class WebAppInterface {" "@android.webkit.JavascriptInterface fun showAd() { runOnUiThread { mInterstitialAd?.show(this@MainActivity); loadAd() } }" "@android.webkit.JavascriptInterface fun finishApp() { finish() } }" "fun loadAd() { InterstitialAd.load(this,\"ca-app-pub-5685258517627203/5332559559\",AdRequest.Builder().build(),object:InterstitialAdLoadCallback(){override fun onAdLoaded(ad:InterstitialAd){mInterstitialAd=ad}override fun onAdFailedToLoad(p:LoadAdError){mInterstitialAd=null}})}" "}" > app/src/main/java/com/hisabcom/app/MainActivity.kt
-          echo "plugins { id 'com.android.application'; id 'org.jetbrains.kotlin.android' }" > app/build.gradle
-          echo "android { namespace 'com.hisabcom.app'; compileSdk 34; defaultConfig { applicationId \"com.hisabcom.app\"; minSdk 21; targetSdk 34; versionCode 3; versionName \"1.2\" } buildTypes { release { minifyEnabled false } } }" >> app/build.gradle
-          echo "dependencies { implementation 'androidx.appcompat:appcompat:1.6.1'; implementation 'com.google.android.gms:play-services-ads:22.5.0' }" >> app/build.gradle
-          echo "include \":app\"" > settings.gradle
-          echo "plugins { id \"com.android.application\" version \"8.2.0\" apply false; id \"org.jetbrains.kotlin.android\" version \"1.9.0\" apply false }" > build.gradle
-          mkdir -p app/src/main
-          echo '<?xml version="1.0" encoding="utf-8"?><manifest xmlns:android="http://schemas.android.com/apk/res/android"><application android:allowBackup="true" android:label="hisab.com" android:theme="@android:style/Theme.NoTitleBar"><activity android:name=".MainActivity" android:exported="true"><intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter></activity><meta-data android:name="com.google.android.gms.ads.APPLICATION_ID" android:value="ca-app-pub-5685258517627203~5338147612"/></application><uses-permission android:name="android.permission.INTERNET"/><uses-permission android:name="com.google.android.gms.permission.AD_ID"/></manifest>' > app/src/main/AndroidManifest.xml
-          gradle wrapper --gradle-version 8.2
-          ./gradlew bundleRelease
+          gradle wrapper --gradle-version 8.5
+          ./gradlew bundleRelease --no-daemon
       - uses: actions/upload-artifact@v4
         with:
-          name: hisab-aab
+          name: hisab-aab-final
           path: app/build/outputs/bundle/release/*.aab
