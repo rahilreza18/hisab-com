@@ -2,6 +2,7 @@ name: Build AAB
 on:
   push:
     branches: [ main ]
+  workflow_dispatch:
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -13,173 +14,113 @@ jobs:
           distribution: 'temurin'
       - uses: android-actions/setup-android@v3
 
-      - name: Create Android Project
+      - name: Create Hisab App with AdMob
         run: |
           cat > settings.gradle << 'EOF'
           include ':app'
           EOF
-
-          cat > build.gradle << 'EOF'
-          buildscript {
-              repositories {
-                  google()
-                  mavenCentral()
-              }
-              dependencies {
-                  classpath 'com.android.tools.build:gradle:7.4.2'
-                  classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.8.10'
-              }
-          }
-          allprojects {
-              repositories {
-                  google()
-                  mavenCentral()
-              }
-          }
-          EOF
-
-          cat > gradle.properties << 'EOF'
-          android.useAndroidX=true
-          org.gradle.jvmargs=-Xmx2g
-          EOF
-
-          mkdir -p app/src/main/java/com/hisabcom/app
-          mkdir -p app/src/main/assets
-          mkdir -p app/src/main/res/values
-
-          cp index.html app/src/main/assets/ 2>/dev/null || echo "<html><body><h1>hisab.com</h1></body></html>" > app/src/main/assets/index.html
-
-          cat > app/src/main/res/values/strings.xml << 'EOF'
-          <resources>
-              <string name="app_name">hisab.com</string>
-          </resources>
-          EOF
-
+          
+          mkdir -p app/src/main/java/com/hisab/khata
+          
           cat > app/build.gradle << 'EOF'
-          apply plugin: 'com.android.application'
-          apply plugin: 'kotlin-android'
-
+          plugins { id 'com.android.application' }
           android {
-              compileSdkVersion 33
+              compileSdk 34
+              namespace 'com.hisab.khata'
               defaultConfig {
-                  applicationId "com.hisabcom.app"
-                  minSdkVersion 21
-                  targetSdkVersion 33
-                  versionCode 10
-                  versionName "1.10"
+                  applicationId "com.hisab.khata"
+                  minSdk 21
+                  targetSdk 34
+                  versionCode 3
+                  versionName "3.0"
+              }
+              signingConfigs {
+                  release {
+                      storeFile file('../hisab-release.keystore')
+                      storePassword 'hisab123'
+                      keyAlias 'hisab'
+                      keyPassword 'hisab123'
+                  }
               }
               buildTypes {
-                  release {
-                      minifyEnabled false
-                  }
+                  release { signingConfig signingConfigs.release }
               }
           }
-
           dependencies {
-              implementation 'androidx.appcompat:appcompat:1.6.1'
-              implementation 'com.google.android.gms:play-services-ads:21.5.0'
+              implementation 'com.google.android.gms:play-services-ads:22.5.0'
           }
           EOF
-
+          
           cat > app/src/main/AndroidManifest.xml << 'EOF'
-          <?xml version="1.0" encoding="utf-8"?>
-          <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.hisabcom.app">
-              <application android:allowBackup="true" android:label="@string/app_name" android:theme="@android:style/Theme.NoTitleBar">
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+              <uses-permission android:name="android.permission.INTERNET" />
+              <application android:label="Hisab Khata" android:theme="@android:style/Theme.NoTitleBar">
+                  <meta-data android:name="com.google.android.gms.ads.APPLICATION_ID" android:value="ca-app-pub-5685258517627203~5338147612"/>
                   <activity android:name=".MainActivity" android:exported="true">
                       <intent-filter>
-                          <action android:name="android.intent.action.MAIN"/>
-                          <category android:name="android.intent.category.LAUNCHER"/>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
                       </intent-filter>
                   </activity>
-                  <meta-data android:name="com.google.android.gms.ads.APPLICATION_ID" android:value="ca-app-pub-5685258517627203~5338147612"/>
               </application>
-              <uses-permission android:name="android.permission.INTERNET"/>
-              <uses-permission android:name="com.google.android.gms.permission.AD_ID"/>
           </manifest>
           EOF
-
-          cat > app/src/main/java/com/hisabcom/app/MainActivity.kt << 'EOF'
-          package com.hisabcom.app
-          import android.os.Bundle
-          import android.webkit.*
-          import android.widget.LinearLayout
-          import androidx.appcompat.app.AppCompatActivity
-          import com.google.android.gms.ads.*
-          import com.google.android.gms.ads.interstitial.*
-
-          class MainActivity : AppCompatActivity() {
-              private var mInterstitialAd: InterstitialAd? = null
-
-              override fun onCreate(savedInstanceState: Bundle?) {
-                  super.onCreate(savedInstanceState)
-                  MobileAds.initialize(this)
-
-                  val mainLayout = LinearLayout(this)
-                  mainLayout.orientation = LinearLayout.VERTICAL
-
-                  val webView = WebView(this)
-                  webView.settings.javaScriptEnabled = true
-                  webView.settings.domStorageEnabled = true
-                  webView.webViewClient = WebViewClient()
-                  webView.addJavascriptInterface(WebAppInterface(), "Android")
-                  webView.loadUrl("file:///android_asset/index.html")
-                  webView.layoutParams = LinearLayout.LayoutParams(
-                      LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
-                  )
-
-                  // BANNER ID - AAPKI ID
-                  val adView = AdView(this)
-                  adView.setAdSize(AdSize.BANNER)
-                  adView.adUnitId = "ca-app-pub-5685258517627203/3563242960"
-                  adView.layoutParams = LinearLayout.LayoutParams(
-                      LinearLayout.LayoutParams.MATCH_PARENT,
-                      LinearLayout.LayoutParams.WRAP_CONTENT
-                  )
-
-                  mainLayout.addView(webView)
-                  mainLayout.addView(adView)
-                  setContentView(mainLayout)
-
-                  adView.loadAd(AdRequest.Builder().build())
-                  loadInterstitial()
+          
+          cat > app/src/main/java/com/hisab/khata/MainActivity.java << 'EOF'
+          package com.hisab.khata;
+          import android.app.Activity;
+          import android.os.Bundle;
+          import android.webkit.WebView;
+          import android.webkit.WebViewClient;
+          import android.widget.LinearLayout;
+          import com.google.android.gms.ads.*;
+          public class MainActivity extends Activity {
+              private WebView webView;
+              private InterstitialAd mInterstitialAd;
+              @Override protected void onCreate(Bundle savedInstanceState) {
+                  super.onCreate(savedInstanceState);
+                  MobileAds.initialize(this, new OnInitializationCompleteListener() {
+                      @Override public void onInitializationComplete(InitializationStatus status) {}
+                  });
+                  LinearLayout layout = new LinearLayout(this);
+                  layout.setOrientation(LinearLayout.VERTICAL);
+                  AdView adView = new AdView(this);
+                  adView.setAdSize(AdSize.BANNER);
+                  adView.setAdUnitId("ca-app-pub-5685258517627203/3563242960");
+                  AdRequest adRequest = new AdRequest.Builder().build();
+                  adView.loadAd(adRequest);
+                  webView = new WebView(this);
+                  webView.getSettings().setJavaScriptEnabled(true);
+                  webView.setWebViewClient(new WebViewClient());
+                  webView.loadUrl("https://rahilreza18.github.io/hisab-com/");
+                  layout.addView(adView);
+                  layout.addView(webView, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.MATCH_PARENT, 1f));
+                  setContentView(layout);
+                  InterstitialAd.load(this, "ca-app-pub-5685258517627203/5332559559", adRequest, new InterstitialAdLoadCallback() {
+                      @Override public void onAdLoaded(InterstitialAd ad) { mInterstitialAd = ad; }
+                  });
               }
-
-              inner class WebAppInterface {
-                  @JavascriptInterface
-                  fun showAd() {
-                      runOnUiThread {
-                          mInterstitialAd?.show(this@MainActivity)
-                          loadInterstitial()
-                      }
+              @Override public void onBackPressed() {
+                  if(webView.canGoBack()) webView.goBack();
+                  else {
+                      if(mInterstitialAd != null) mInterstitialAd.show(this);
+                      super.onBackPressed();
                   }
-                  @JavascriptInterface
-                  fun finishApp() {
-                      finish()
-                  }
-              }
-
-              // INTERSTITIAL ID - AAPKI ID
-              private fun loadInterstitial() {
-                  InterstitialAd.load(this, "ca-app-pub-5685258517627203/5332559559", AdRequest.Builder().build(),
-                      object : InterstitialAdLoadCallback() {
-                          override fun onAdLoaded(ad: InterstitialAd) { mInterstitialAd = ad }
-                          override fun onAdFailedToLoad(error: LoadAdError) { mInterstitialAd = null }
-                      })
               }
           }
           EOF
 
-          echo "sdk.dir=$ANDROID_HOME" > local.properties
-          ls -R
+      - name: Generate Keystore
+        run: keytool -genkey -v -keystore hisab-release.keystore -alias hisab -keyalg RSA -keysize 2048 -validity 10000 -storepass hisab123 -keypass hisab123 -dname "CN=Hisab, OU=Hisab, O=Hisab, L=Delhi, S=Delhi, C=IN"
 
-      - name: Build AAB with Gradle 7.6
+      - name: Build Signed AAB with AdMob
         run: |
-          wget https://services.gradle.org/distributions/gradle-7.6-bin.zip -q
-          unzip -q gradle-7.6-bin.zip
-          ./gradle-7.6/bin/gradle bundleRelease --no-daemon
+          cd app
+          chmod +x ../gradlew || gradle wrapper
+          ./gradlew bundleRelease || gradle bundleRelease
 
-      - name: Upload AAB
+      - name: Upload Signed AAB
         uses: actions/upload-artifact@v4
         with:
-          name: hisab-aab-final
+          name: hisab-signed-admob-aab
           path: app/build/outputs/bundle/release/*.aab
