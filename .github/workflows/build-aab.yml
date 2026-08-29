@@ -1,0 +1,98 @@
+name: Build AAB
+on: [push]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+      - name: Build AAB with Banner + Big Cross
+        run: |
+          mkdir -p app/src/main/assets
+          cp index.html app/src/main/assets/
+          mkdir -p app/src/main/java/com/hisabcom/app
+          cat > app/src/main/java/com/hisabcom/app/MainActivity.kt << 'EOF'
+          package com.hisabcom.app
+          import android.os.Bundle
+          import android.webkit.WebView
+          import android.webkit.WebViewClient
+          import android.widget.LinearLayout
+          import android.view.ViewGroup
+          import androidx.appcompat.app.AppCompatActivity
+          import com.google.android.gms.ads.*
+          import com.google.android.gms.ads.interstitial.InterstitialAd
+          import com.google.android.gms.ads.interstitial.InterstitialAdLoadCallback
+          class MainActivity : AppCompatActivity() {
+              private var mInterstitialAd: InterstitialAd? = null
+              private lateinit var webView: WebView
+              private lateinit var adView: AdView
+              override fun onCreate(savedInstanceState: Bundle?) {
+                  super.onCreate(savedInstanceState)
+                  MobileAds.initialize(this)
+                  val layout = LinearLayout(this)
+                  layout.orientation = LinearLayout.VERTICAL
+                  layout.layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+                  webView = WebView(this)
+                  webView.settings.javaScriptEnabled = true
+                  webView.settings.domStorageEnabled = true
+                  webView.webViewClient = WebViewClient()
+                  webView.addJavascriptInterface(WebAppInterface(), "Android")
+                  webView.loadUrl("file:///android_asset/index.html")
+                  val webParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f)
+                  webView.layoutParams = webParams
+                  adView = AdView(this)
+                  adView.setAdSize(AdSize.BANNER)
+                  adView.adUnitId = "ca-app-pub-5685258517627203/3563242960"
+                  val adParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+                  adView.layoutParams = adParams
+                  layout.addView(webView)
+                  layout.addView(adView)
+                  setContentView(layout)
+                  val adRequest = AdRequest.Builder().build()
+                  adView.loadAd(adRequest)
+                  loadInterstitial()
+              }
+              inner class WebAppInterface {
+                  @android.webkit.JavascriptInterface
+                  fun showAd() { runOnUiThread { mInterstitialAd?.show(this@MainActivity); loadInterstitial() } }
+                  @android.webkit.JavascriptInterface
+                  fun finishApp() { finish() }
+              }
+              private fun loadInterstitial() {
+                  val adRequest = AdRequest.Builder().build()
+                  InterstitialAd.load(this,"ca-app-pub-5685258517627203/5332559559", adRequest, object : InterstitialAdLoadCallback() {
+                      override fun onAdLoaded(ad: InterstitialAd) { mInterstitialAd = ad }
+                      override fun onAdFailedToLoad(p0: LoadAdError) { mInterstitialAd = null }
+                  })
+              }
+          }
+          EOF
+          cat > app/build.gradle << 'EOF'
+          plugins { id 'com.android.application'; id 'org.jetbrains.kotlin.android' }
+          android { namespace 'com.hisabcom.app'; compileSdk 34; defaultConfig { applicationId "com.hisabcom.app"; minSdk 21; targetSdk 34; versionCode 2; versionName "1.1" }; buildTypes { release { minifyEnabled false } } }
+          dependencies { implementation 'androidx.appcompat:appcompat:1.6.1'; implementation 'com.google.android.gms:play-services-ads:22.5.0'; implementation 'org.jetbrains.kotlin:kotlin-stdlib:1.9.0' }
+          EOF
+          echo 'include ":app"' > settings.gradle
+          echo 'plugins { id "com.android.application" version "8.2.0" apply false; id "org.jetbrains.kotlin.android" version "1.9.0" apply false }' > build.gradle
+          mkdir -p app/src/main
+          cat > app/src/main/AndroidManifest.xml << 'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+          <application android:allowBackup="true" android:label="hisab.com" android:theme="@android:style/Theme.NoTitleBar">
+          <activity android:name=".MainActivity" android:exported="true"><intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter></activity>
+          <meta-data android:name="com.google.android.gms.ads.APPLICATION_ID" android:value="ca-app-pub-5685258517627203~5338147612"/>
+          </application>
+          <uses-permission android:name="android.permission.INTERNET"/>
+          <uses-permission android:name="com.google.android.gms.permission.AD_ID"/>
+          </manifest>
+          EOF
+          gradle wrapper
+         ./gradlew bundleRelease
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hisab-aab-banner-bigcross
+          path: app/build/outputs/bundle/release/*.aab
